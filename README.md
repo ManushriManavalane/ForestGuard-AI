@@ -1,10 +1,10 @@
-# 🌲 ForestGuard AI — Wildfire Control & Escape System
+# ForestGuard AI — Wildfire Control & Escape System
 
 ForestGuard AI is an advanced, real-time tactical analysis and decision support system designed to manage and mitigate wildfire disasters. It combines a machine learning-driven cellular automaton simulation with advanced pathfinding algorithms to provide predictive spread modeling, safe escape routing, and strategic fire containment recommendations.
 
 ---
 
-## 🚀 Core Features
+## Core Features
 
 1. **AI-Powered Wildfire Spread Simulation**
    * Uses an ensemble of **Gradient Boosting** and **Random Forest** classification models trained on the UCI Forest Fires dataset.
@@ -33,7 +33,7 @@ ForestGuard AI is an advanced, real-time tactical analysis and decision support 
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 * **Frontend**: HTML5, Vanilla CSS3 (Custom design tokens, glassmorphism, responsive flex layouts), Leaflet.js, Leaflet Heatmap.
 * **Backend**: Flask (Python 3)
@@ -42,7 +42,7 @@ ForestGuard AI is an advanced, real-time tactical analysis and decision support 
 
 ---
 
-## 📦 Project Directory Structure
+## Project Directory Structure
 
 ```text
 ├── data/
@@ -62,7 +62,7 @@ ForestGuard AI is an advanced, real-time tactical analysis and decision support 
 
 ---
 
-## 💻 Local Installation & Setup
+## Local Installation & Setup
 
 ### Prerequisites
 Make sure you have **Python 3.8+** installed on your system.
@@ -97,7 +97,7 @@ python app.py
 
 ---
 
-## 🖥️ How to Use the System
+##  How to Use the System
 
 1. **Launch the Dashboard**: Open your browser and navigate to **[http://127.0.0.1:5000/](http://127.0.0.1:5000/)**.
 2. **Select a Forest Region**: Use the top-left map panel to examine different pre-set locations or scan coordinates.
