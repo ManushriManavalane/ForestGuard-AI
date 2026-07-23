@@ -1,0 +1,1743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>ForestGuard AI — Wildfire Control System</title>
+<meta name="description" content="Real-time AI-powered forest fire spread prediction, A* escape routing, and intelligent fire control analysis on live map."/>
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+
+<style>
+/* ══════════════════════════════════════════════════
+   DESIGN TOKENS
+══════════════════════════════════════════════════ */
+:root {
+  --bg-dark:    #090e1a;
+  --bg-panel:   rgba(12, 18, 34, 0.92);
+  --bg-card:    rgba(255,255,255,0.04);
+  --bg-card-h:  rgba(255,255,255,0.08);
+  --border:     rgba(255,255,255,0.08);
+  --border-h:   rgba(255,255,255,0.18);
+  --accent-fire:       #cc1100;
+  --accent-fire-bright:#ff3300;
+  --accent-gold: #ffb347;
+  --accent-blue: #3b8bff;
+  --accent-cyan: #00d4ff;
+  --accent-green:#00e676;
+  --accent-orange:#ff6600;
+  --text-1: #f0f4ff;
+  --text-2: #8a96b4;
+  --text-3: #4a546e;
+  --shadow-lg: 0 24px 64px rgba(0,0,0,0.7);
+  --radius-lg: 16px;
+  --radius-md: 10px;
+  --transition: 0.2s cubic-bezier(0.4,0,0.2,1);
+}
+
+/* ══════════════════════════════════════════════════
+   RESET & BASE
+══════════════════════════════════════════════════ */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; overflow: hidden; background: var(--bg-dark); font-family: 'Inter', sans-serif; color: var(--text-1); }
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-h); border-radius: 2px; }
+
+/* ══════════════════════════════════════════════════
+   LAYOUT
+══════════════════════════════════════════════════ */
+#app { display: flex; height: 100vh; width: 100vw; position: relative; }
+#map { flex: 1; height: 100%; z-index: 1; }
+#sidebar {
+  width: 340px; min-width: 340px; height: 100%;
+  background: var(--bg-panel);
+  backdrop-filter: blur(24px) saturate(1.6);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  border-left: 1px solid var(--border);
+  display: flex; flex-direction: column;
+  z-index: 10; overflow-y: auto;
+  box-shadow: -8px 0 48px rgba(0,0,0,0.5);
+}
+
+/* ══════════════════════════════════════════════════
+   HEADER
+══════════════════════════════════════════════════ */
+.sidebar-header {
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(135deg, rgba(204,17,0,0.14) 0%, rgba(255,100,0,0.06) 100%);
+  flex-shrink: 0;
+}
+.logo-row { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.logo-icon {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: linear-gradient(135deg, #6b0000, #cc1100);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px; box-shadow: 0 4px 16px rgba(139,0,0,0.55);
+  animation: pulse-logo 2s ease-in-out infinite;
+}
+@keyframes pulse-logo {
+  0%,100% { box-shadow: 0 4px 16px rgba(139,0,0,0.45); }
+  50%      { box-shadow: 0 4px 32px rgba(204,17,0,0.9); }
+}
+.logo-title {
+  font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 800;
+  background: linear-gradient(90deg, #cc1100, #ff6600);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+}
+.logo-sub { font-size: 11px; color: var(--text-2); letter-spacing: 0.5px; }
+
+/* Region badge */
+#region-badge {
+  padding: 6px 10px; border-radius: 8px;
+  background: rgba(0,230,118,0.07); border: 1px solid rgba(0,230,118,0.2);
+  display: flex; align-items: center; gap: 6px; font-size: 11px;
+}
+.region-emoji { font-size: 14px; }
+#region-name-text { color: var(--accent-green); font-weight: 600; flex: 1; }
+#region-type-text { color: var(--text-3); font-size: 10px; }
+
+/* Status bar */
+.status-bar {
+  margin-top: 10px; padding: 8px 12px; border-radius: var(--radius-md);
+  background: var(--bg-card); border: 1px solid var(--border);
+  display: flex; align-items: center; gap: 8px; font-size: 12px;
+}
+.status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-green); flex-shrink: 0; animation: blink 1.5s ease-in-out infinite; }
+.status-dot.danger { background: #cc1100; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+#status-text { color: var(--text-2); flex: 1; }
+
+/* ══════════════════════════════════════════════════
+   SECTION LABELS
+══════════════════════════════════════════════════ */
+.section { padding: 16px 20px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+.section-label {
+  font-size: 10px; font-weight: 600; letter-spacing: 1.5px;
+  color: var(--text-3); text-transform: uppercase; margin-bottom: 12px;
+  display: flex; align-items: center; gap: 6px;
+}
+.section-label::after { content:''; flex:1; height:1px; background: var(--border); }
+
+/* ══════════════════════════════════════════════════
+   STAT CARDS
+══════════════════════════════════════════════════ */
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.stat-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-md); padding: 10px 12px;
+  transition: var(--transition);
+}
+.stat-card:hover { background: var(--bg-card-h); border-color: var(--border-h); }
+.stat-label { font-size: 10px; color: var(--text-3); margin-bottom: 3px; }
+.stat-value { font-size: 20px; font-weight: 700; font-family: 'Outfit', sans-serif; line-height: 1; }
+.stat-unit  { font-size: 11px; color: var(--text-2); margin-left: 2px; }
+.c-fire   { color: #ff2200; }
+.c-gold   { color: var(--accent-gold); }
+.c-blue   { color: var(--accent-blue); }
+.c-cyan   { color: var(--accent-cyan); }
+.c-green  { color: var(--accent-green); }
+.c-orange { color: var(--accent-orange); }
+
+/* ══════════════════════════════════════════════════
+   SLIDERS
+══════════════════════════════════════════════════ */
+.slider-row { margin-bottom: 12px; }
+.slider-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.slider-name { font-size: 12px; color: var(--text-2); }
+.slider-val  { font-size: 12px; font-weight: 600; color: var(--text-1); font-variant-numeric: tabular-nums; }
+input[type=range] {
+  -webkit-appearance: none; width: 100%; height: 4px;
+  border-radius: 2px; background: var(--border); outline: none; cursor: pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%;
+  background: var(--accent-fire); cursor: pointer;
+  box-shadow: 0 0 8px rgba(204,17,0,0.65);
+  transition: transform var(--transition);
+}
+input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.3); }
+#hum-range::-webkit-slider-thumb  { background: var(--accent-cyan);   box-shadow: 0 0 8px rgba(0,212,255,0.6); }
+#wind-range::-webkit-slider-thumb { background: var(--accent-blue);   box-shadow: 0 0 8px rgba(59,139,255,0.6); }
+
+/* ══════════════════════════════════════════════════
+   COMPASS ROSE
+══════════════════════════════════════════════════ */
+.compass-wrap { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.compass {
+  width: 100px; height: 100px; position: relative;
+  border-radius: 50%; background: var(--bg-card); border: 1px solid var(--border);
+}
+.compass-inner { position: absolute; inset: 8px; border-radius: 50%; background: rgba(255,255,255,0.02); }
+.compass-dir {
+  position: absolute; width: 28px; height: 28px; border-radius: 50%;
+  border: 1px solid var(--border); background: var(--bg-card);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 600; color: var(--text-2); cursor: pointer;
+  transition: var(--transition);
+}
+.compass-dir:hover { background: rgba(204,17,0,0.15); border-color: var(--accent-fire); color: var(--accent-fire); }
+.compass-dir.active { background: rgba(204,17,0,0.25); border-color: var(--accent-fire); color: var(--accent-fire); box-shadow: 0 0 12px rgba(204,17,0,0.45); }
+.d-n  { top:2px;   left:50%; transform:translateX(-50%); }
+.d-ne { top:14px;  right:6px; }
+.d-e  { top:50%;   right:2px; transform:translateY(-50%); }
+.d-se { bottom:14px; right:6px; }
+.d-s  { bottom:2px; left:50%; transform:translateX(-50%); }
+.d-sw { bottom:14px; left:6px; }
+.d-w  { top:50%;   left:2px; transform:translateY(-50%); }
+.d-nw { top:14px;  left:6px; }
+.compass-center {
+  position: absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  width:20px; height:20px; border-radius:50%;
+  background: linear-gradient(135deg,#6b0000,#cc1100);
+  box-shadow: 0 0 12px rgba(204,17,0,0.5);
+  display:flex; align-items:center; justify-content:center; font-size:8px;
+}
+
+/* ══════════════════════════════════════════════════
+   BUTTONS
+══════════════════════════════════════════════════ */
+.btn-group { display: flex; flex-direction: column; gap: 8px; }
+.btn {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 11px 16px; border-radius: var(--radius-md);
+  font-size: 13px; font-weight: 600; font-family: 'Inter', sans-serif;
+  border: none; cursor: pointer; transition: var(--transition);
+  position: relative; overflow: hidden; letter-spacing: 0.3px;
+}
+.btn::before {
+  content: ''; position: absolute; inset: 0;
+  background: rgba(255,255,255,0.08); opacity: 0; transition: var(--transition);
+}
+.btn:hover::before { opacity: 1; }
+.btn:active { transform: scale(0.97); }
+
+.btn-primary {
+  background: linear-gradient(135deg, #6b0000, #cc1100);
+  color: white; box-shadow: 0 4px 20px rgba(107,0,0,0.45);
+}
+.btn-primary:hover { box-shadow: 0 6px 30px rgba(204,17,0,0.65); }
+.btn-secondary {
+  background: var(--bg-card); border: 1px solid var(--border); color: var(--text-1);
+}
+.btn-secondary:hover { border-color: var(--border-h); background: var(--bg-card-h); }
+.btn-blue {
+  background: linear-gradient(135deg, #1a5fff, #3b8bff);
+  color: white; box-shadow: 0 4px 18px rgba(59,139,255,0.35);
+}
+.btn-blue:hover { box-shadow: 0 6px 28px rgba(59,139,255,0.55); }
+.btn-green {
+  background: linear-gradient(135deg, #00695c, #00e676);
+  color: #001a0f; box-shadow: 0 4px 18px rgba(0,230,118,0.3);
+}
+.btn-danger {
+  background: linear-gradient(135deg, #3d0000, #7a0f00);
+  color: white; box-shadow: 0 4px 18px rgba(122,15,0,0.4);
+}
+.btn-danger:hover { box-shadow: 0 6px 26px rgba(204,17,0,0.5); }
+.btn-fire-control {
+  background: linear-gradient(135deg, #4d1500, #cc3300, #ff4400);
+  color: white; box-shadow: 0 4px 20px rgba(204,51,0,0.45);
+  animation: fire-ctrl-glow 2.5s ease-in-out infinite;
+}
+.btn-fire-control:hover { box-shadow: 0 6px 34px rgba(255,68,0,0.7); }
+.btn-fire-control:disabled { opacity: 0.6; animation: none; cursor: not-allowed; }
+@keyframes fire-ctrl-glow {
+  0%,100% { box-shadow: 0 4px 20px rgba(204,51,0,0.45); }
+  50%     { box-shadow: 0 4px 32px rgba(255,68,0,0.7), 0 0 0 3px rgba(255,68,0,0.18); }
+}
+.btn-toggle { background: var(--bg-card); border: 1px solid var(--border); color: var(--text-1); }
+.btn-toggle.running {
+  background: linear-gradient(135deg, rgba(204,17,0,0.2), rgba(255,100,0,0.1));
+  border-color: var(--accent-fire); color: var(--accent-fire);
+  box-shadow: 0 0 20px rgba(204,17,0,0.25);
+}
+.btn.active-mode {
+  box-shadow: 0 0 0 2px var(--accent-fire), 0 4px 20px rgba(204,17,0,0.4) !important;
+}
+
+/* Route mode row */
+.route-mode-row { display: flex; gap: 6px; margin-bottom: 8px; }
+.route-mode-btn {
+  flex: 1; padding: 7px 6px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--bg-card); color: var(--text-2); font-size: 11px; font-weight: 600;
+  cursor: pointer; transition: var(--transition); text-align: center;
+}
+.route-mode-btn.active {
+  background: rgba(59,139,255,0.18); border-color: var(--accent-blue); color: var(--accent-blue);
+}
+
+/* ══════════════════════════════════════════════════
+   MODE INDICATOR
+══════════════════════════════════════════════════ */
+#mode-indicator {
+  margin: 0 20px; padding: 8px 12px; border-radius: var(--radius-md);
+  font-size: 12px; font-weight: 600;
+  display: none; align-items: center; gap: 8px; justify-content: center;
+}
+#mode-indicator.show { display: flex; }
+.mode-start { background: rgba(0,230,118,0.15);  border: 1px solid var(--accent-green); color: var(--accent-green); }
+.mode-goal  { background: rgba(59,139,255,0.15); border: 1px solid var(--accent-blue);  color: var(--accent-blue); }
+
+/* ══════════════════════════════════════════════════
+   FIRE CONTROL PANEL
+══════════════════════════════════════════════════ */
+#fire-control-panel {
+  margin-top: 10px; padding: 12px;
+  background: rgba(180,30,0,0.06); border: 1px solid rgba(204,17,0,0.22);
+  border-radius: var(--radius-md);
+  display: none; max-height: 230px; overflow-y: auto;
+}
+#fire-control-panel.show { display: block; animation: fade-in-up 0.35s ease; }
+@keyframes fade-in-up { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:none} }
+
+.ctrl-summary-bar {
+  font-size: 11px; color: var(--accent-orange); font-weight: 600;
+  margin-bottom: 8px; padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255,102,0,0.22);
+  display: flex; align-items: center; gap: 6px;
+}
+.ctrl-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-orange); animation: blink 1s ease-in-out infinite; }
+
+#fire-control-text {
+  font-family: 'JetBrains Mono', monospace; font-size: 10px;
+  color: #ffaa88; line-height: 1.65; white-space: pre-wrap;
+}
+
+.analyzing-spinner {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 12px; color: var(--text-2); font-family: 'JetBrains Mono', monospace;
+}
+.mini-spinner {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.15);
+  border-top-color: var(--accent-fire);
+  animation: spin 0.75s linear infinite;
+}
+
+/* ══════════════════════════════════════════════════
+   AI LOG
+══════════════════════════════════════════════════ */
+.ai-log { max-height: 130px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+.log-entry {
+  font-size: 11px; padding: 5px 8px; border-radius: 6px;
+  background: var(--bg-card); border-left: 3px solid var(--border);
+  color: var(--text-2); animation: slide-in 0.3s ease;
+}
+@keyframes slide-in { from{opacity:0;transform:translateX(8px)} to{opacity:1;transform:none} }
+.log-entry.fire { border-left-color: var(--accent-fire); }
+.log-entry.path { border-left-color: var(--accent-blue); }
+.log-entry.ctrl { border-left-color: var(--accent-orange); }
+.log-entry.info { border-left-color: var(--accent-green); }
+
+/* ══════════════════════════════════════════════════
+   MAP OVERLAYS & POPUPS
+══════════════════════════════════════════════════ */
+.fire-popup {
+  font-family: 'Inter', sans-serif; font-size: 12px; color: #fff;
+  background: rgba(10,15,30,0.95); border-radius: 8px; padding: 8px 12px;
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+/* ── Route Info Box ── */
+#route-info {
+  position: absolute; bottom: 24px; left: 24px; z-index: 500;
+  background: rgba(10,15,30,0.92); backdrop-filter: blur(16px);
+  border: 1px solid var(--border); border-radius: var(--radius-lg);
+  padding: 14px 18px; display: none; min-width: 200px;
+  box-shadow: var(--shadow-lg);
+}
+#route-info.show { display: block; animation: fade-up 0.3s ease; }
+@keyframes fade-up { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:none} }
+.route-info-title { font-size: 11px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+.route-info-row { display: flex; justify-content: space-between; gap: 16px; align-items: center; }
+.route-info-val { font-size: 18px; font-weight: 700; font-family: 'Outfit', sans-serif; color: var(--accent-blue); }
+.route-info-label { font-size: 11px; color: var(--text-2); }
+
+/* ── Region Panel (OSM embed, top-left of map) ── */
+#region-panel {
+  position: absolute; top: 24px; left: 24px; z-index: 500;
+  width: 268px;
+  background: rgba(10,15,30,0.90); backdrop-filter: blur(16px);
+  border: 1px solid rgba(0,230,118,0.2); border-radius: var(--radius-lg);
+  overflow: hidden; box-shadow: var(--shadow-lg);
+  animation: fade-in-up 0.5s ease;
+  transition: width 0.25s ease;
+}
+#region-panel.collapsed { width: 185px; }
+.rp-header {
+  padding: 10px 12px;
+  background: linear-gradient(135deg, rgba(0,230,118,0.09), rgba(0,100,60,0.04));
+  display: flex; align-items: center; justify-content: space-between;
+  cursor: pointer; user-select: none;
+}
+.rp-title { font-size: 12px; font-weight: 600; color: var(--accent-green); display: flex; align-items: center; gap: 5px; }
+.rp-subtitle { font-size: 10px; color: var(--text-3); margin-top: 1px; }
+.rp-collapse-btn { font-size: 11px; color: var(--text-3); background: none; border: none; cursor: pointer; padding: 0; }
+.rp-osm-embed {
+  width: 100%; height: 138px; border: none;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  display: block; transition: height 0.25s ease;
+}
+#region-panel.collapsed .rp-osm-embed { height: 0; }
+.rp-info-bar {
+  padding: 6px 10px; font-size: 10px; color: var(--text-3);
+  border-top: 1px solid var(--border); line-height: 1.4;
+  transition: height 0.25s ease;
+}
+#region-panel.collapsed .rp-info-bar { display: none; }
+
+/* ── Toast ── */
+#toast {
+  position: absolute; top: 20px; left: 50%; transform: translateX(-50%) translateY(-80px);
+  z-index: 999; background: rgba(10,15,30,0.96); backdrop-filter: blur(16px);
+  border: 1px solid var(--border); border-radius: 40px;
+  padding: 10px 20px; font-size: 13px; font-weight: 500;
+  box-shadow: var(--shadow-lg); transition: transform 0.4s cubic-bezier(0.34,1.56,0.64,1);
+  white-space: nowrap; pointer-events: none;
+}
+#toast.show { transform: translateX(-50%) translateY(0); }
+#toast.warn { border-color: #cc1100; color: #ff4422; }
+#toast.good { border-color: var(--accent-green); color: var(--accent-green); }
+#toast.info { border-color: var(--accent-blue);  color: var(--accent-blue); }
+#toast.ctrl { border-color: var(--accent-orange); color: var(--accent-orange); }
+
+/* ── Loading Overlay ── */
+#loading {
+  position: absolute; inset: 0; z-index: 9999;
+  background: var(--bg-dark);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
+  transition: opacity 0.6s;
+}
+#loading.hide { opacity: 0; pointer-events: none; }
+.loader-ring {
+  width: 56px; height: 56px; border-radius: 50%;
+  border: 3px solid rgba(255,255,255,0.06);
+  border-top-color: #cc1100;
+  animation: spin 0.85s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.loader-text { font-size: 13px; color: var(--text-2); font-family: 'JetBrains Mono', monospace; }
+
+/* ── Misc ── */
+.marker-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.legend { display: flex; flex-direction: column; gap: 6px; }
+.legend-row { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--text-2); }
+.legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.spread-bar-wrap { margin-top: 6px; }
+.spread-bar-bg { height: 4px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.spread-bar-fill { height: 100%; border-radius: 2px; background: linear-gradient(90deg, #6b0000, #cc1100, #ff2200); transition: width 0.5s ease; }
+.spread-bar-label { font-size: 10px; color: var(--text-3); margin-top: 3px; text-align: right; }
+
+/* ── Zone Label on Map ── */
+.zone-label {
+  background: rgba(10,15,30,0.88); border: 1px solid rgba(255,102,0,0.5);
+  border-radius: 6px; padding: 3px 7px;
+  font-size: 10px; font-weight: 700; font-family: 'JetBrains Mono', monospace;
+  white-space: nowrap; pointer-events: none; color: #ff8844;
+}
+.zone-label.critical { border-color: rgba(220,0,0,0.75); color: #ff3333; }
+.zone-label.high     { border-color: rgba(255,102,0,0.7); color: #ff8833; }
+.zone-label.moderate { border-color: rgba(255,200,0,0.5); color: #ffcc33; }
+
+/* ── Fire spread animated cells ── */
+@keyframes fire-pulse {
+  0%,100% { opacity: 0.85; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.08); }
+}
+.fire-cell-icon {
+  animation: fire-pulse 0.9s ease-in-out infinite;
+  filter: drop-shadow(0 0 8px #ff2200);
+}
+</style>
+</head>
+<body>
+
+<!-- ══ Loading Screen ══ -->
+<div id="loading">
+  <div class="loader-ring"></div>
+  <div class="loader-text" id="loading-text">Detecting forest region...</div>
+</div>
+
+<div id="app">
+
+  <!-- ══ MAP ══ -->
+  <div id="map"></div>
+
+  <!-- ══ SIDEBAR ══ -->
+  <div id="sidebar">
+
+    <!-- Header -->
+    <div class="sidebar-header">
+      <div class="logo-row">
+        <div class="logo-icon">🔥</div>
+        <div>
+          <div class="logo-title">ForestGuard AI</div>
+          <div class="logo-sub">Wildfire Control &amp; Escape System</div>
+        </div>
+      </div>
+      <div id="region-badge" style="margin-bottom:10px;">
+        <span class="region-emoji" id="region-emoji">🌲</span>
+        <span id="region-name-text">Detecting region...</span>
+        <span id="region-type-text"></span>
+      </div>
+      <div class="status-bar">
+        <div class="status-dot" id="status-dot"></div>
+        <div id="status-text">System ready</div>
+      </div>
+    </div>
+
+    <!-- Live Stats -->
+    <div class="section">
+      <div class="section-label">Live Statistics</div>
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-label">Fire Cells</div>
+          <div class="stat-value c-fire" id="stat-cells">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Spread Risk</div>
+          <div class="stat-value c-gold" id="stat-prob">0<span class="stat-unit">%</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Area Burned</div>
+          <div class="stat-value c-cyan" id="stat-area">0<span class="stat-unit">ha</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Sim Steps</div>
+          <div class="stat-value c-orange" id="stat-steps">0</div>
+        </div>
+      </div>
+      <div class="spread-bar-wrap">
+        <div class="spread-bar-bg"><div class="spread-bar-fill" id="spread-bar" style="width:0%"></div></div>
+        <div class="spread-bar-label" id="spread-bar-label">Fire spread probability: —</div>
+      </div>
+    </div>
+
+    <!-- Weather Controls -->
+    <div class="section">
+      <div class="section-label">Weather Conditions</div>
+
+      <div class="slider-row">
+        <div class="slider-header">
+          <span class="slider-name">🌡️ Temperature</span>
+          <span class="slider-val" id="temp-val">30°C</span>
+        </div>
+        <input type="range" id="temp-range" min="15" max="55" value="30" step="1"/>
+      </div>
+
+      <div class="slider-row">
+        <div class="slider-header">
+          <span class="slider-name">💧 Humidity</span>
+          <span class="slider-val" id="hum-val">40%</span>
+        </div>
+        <input type="range" id="hum-range" min="5" max="95" value="40" step="1"/>
+      </div>
+
+      <div class="slider-row">
+        <div class="slider-header">
+          <span class="slider-name">💨 Wind Speed</span>
+          <span class="slider-val" id="wind-val">15 km/h</span>
+        </div>
+        <input type="range" id="wind-range" min="0" max="80" value="15" step="1"/>
+      </div>
+
+      <div class="compass-wrap" style="margin-top:4px;">
+        <div class="slider-name" style="align-self:flex-start;">
+          🧭 Wind Direction: <span id="wind-dir-label" style="color:var(--accent-fire);font-weight:600;">N</span>
+        </div>
+        <div class="compass" id="compass">
+          <div class="compass-inner"></div>
+          <div class="compass-dir d-n active" data-dir="N">N</div>
+          <div class="compass-dir d-ne" data-dir="NE">NE</div>
+          <div class="compass-dir d-e"  data-dir="E">E</div>
+          <div class="compass-dir d-se" data-dir="SE">SE</div>
+          <div class="compass-dir d-s"  data-dir="S">S</div>
+          <div class="compass-dir d-sw" data-dir="SW">SW</div>
+          <div class="compass-dir d-w"  data-dir="W">W</div>
+          <div class="compass-dir d-nw" data-dir="NW">NW</div>
+          <div class="compass-center">🧭</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Simulation Controls -->
+    <div class="section">
+      <div class="section-label">Fire Simulation</div>
+      <div class="btn-group">
+        <button class="btn btn-toggle" id="btn-sim" onclick="toggleSimulation()">
+          <span id="sim-icon">▶</span> <span id="sim-label">Start Simulation</span>
+        </button>
+        <button class="btn btn-danger" onclick="resetFire()">🔄 Reset Fire</button>
+      </div>
+    </div>
+
+    <!-- Location Markers -->
+    <div class="section">
+      <div class="section-label">Set Locations</div>
+      <div class="marker-btns">
+        <button class="btn btn-green" id="btn-set-start" onclick="setMode('start')">🏃 Set Start</button>
+        <button class="btn btn-blue"  id="btn-set-goal"  onclick="setMode('goal')">🏁 Set Goal</button>
+      </div>
+
+      <!-- Route mode selector -->
+      <div class="route-mode-row" style="margin-top:10px;">
+        <div class="route-mode-btn active" id="rmode-astar" onclick="setRouteMode('astar')" title="AI A* pathfinding — avoids fire zones">🤖 AI Route</div>
+        <div class="route-mode-btn" id="rmode-road" onclick="setRouteMode('road')" title="Real road route via OSRM (free, no API key)">🛣️ Road Route</div>
+      </div>
+      <div id="route-mode-note" style="font-size:10px;color:var(--text-3);margin-bottom:6px;padding:0 2px;">AI Route: avoids live fire zones using A* pathfinding</div>
+
+      <button class="btn btn-blue" style="margin-top:4px;" onclick="findPath()">🗺️ Find Escape Route</button>
+    </div>
+
+    <!-- AI Fire Control Analysis -->
+    <div class="section">
+      <div class="section-label">AI Fire Control</div>
+      <button class="btn btn-fire-control" id="btn-fire-ctrl" onclick="runFireControlAnalysis()">
+        🚒 Fire Control Analysis
+      </button>
+      <div id="fire-control-panel">
+        <div class="ctrl-summary-bar">
+          <div class="ctrl-dot"></div>
+          <span id="ctrl-summary-text">Tactical Analysis</span>
+        </div>
+        <div id="fire-control-text"></div>
+      </div>
+    </div>
+
+    <!-- Legend -->
+    <div class="section">
+      <div class="section-label">Map Legend</div>
+      <div class="legend">
+        <div class="legend-row"><div class="legend-dot" style="background:#ff2200;box-shadow:0 0 8px #ff2200;width:14px;height:14px;border-radius:3px;"></div><span>Active Fire (animated)</span></div>
+        <div class="legend-row"><div class="legend-dot" style="background:rgba(180,0,0,0.6);border:1px solid #ff5500;border-radius:50%;"></div><span>Fire Spread Heatmap</span></div>
+        <div class="legend-row"><div class="legend-dot" style="background:#1a0000;border:1px solid #500;"></div>Burned Area</div>
+        <div class="legend-row"><div class="legend-dot" style="background:#3b8bff;border-radius:2px;height:4px;width:18px;"></div>Escape Route</div>
+        <div class="legend-row"><div class="legend-dot" style="background:#ff4400;box-shadow:0 0 5px #ff4400;border:1px solid #ff6600;"></div>Control Zone</div>
+      </div>
+    </div>
+
+    <!-- AI Event Log -->
+    <div class="section" style="flex:1; display:flex; flex-direction:column;">
+      <div class="section-label">AI Event Log</div>
+      <div class="ai-log" id="ai-log"></div>
+    </div>
+
+  </div><!-- /sidebar -->
+</div><!-- /app -->
+
+<!-- Route Info Box -->
+<div id="route-info">
+  <div class="route-info-title">🗺️ Safe Escape Route</div>
+  <div class="route-info-row">
+    <div><div class="route-info-val" id="route-dist">—</div><div class="route-info-label">Distance (km)</div></div>
+    <div><div class="route-info-val" id="route-eta">—</div><div class="route-info-label">ETA (min walking)</div></div>
+    <div><div class="route-info-val" id="route-nodes" style="color:var(--accent-green)">—</div><div class="route-info-label">Nodes explored</div></div>
+  </div>
+</div>
+
+<!-- Region Panel (top-left of map, OSM embed — no API key needed) -->
+<div id="region-panel">
+  <div class="rp-header" onclick="toggleRegionPanel()">
+    <div>
+      <div class="rp-title"><span id="rp-emoji">🌲</span> <span id="rp-name">Forest Region</span></div>
+      <div class="rp-subtitle" id="rp-type">Scanning area...</div>
+    </div>
+    <button class="rp-collapse-btn" id="rp-btn">▼</button>
+  </div>
+  <iframe id="rp-osm" class="rp-osm-embed" src="" loading="lazy" title="Region Map View"></iframe>
+  <div class="rp-info-bar" id="rp-info"></div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Mode Indicator (floating) -->
+<div id="mode-indicator"></div>
+
+<!-- ════════════════════════════════════════════════════════
+     JAVASCRIPT
+═════════════════════════════════════════════════════════ -->
+<script>
+// ══════════════════════════════════════════════════════════
+//  FOREST REGION DATABASE (India — forest & hill regions)
+// ══════════════════════════════════════════════════════════
+const FOREST_REGIONS = [
+  {
+    name: 'Western Ghats, Kerala',
+    center: [10.352, 76.512],
+    bounds: [[10.30, 76.45], [10.42, 76.58]],
+    type: 'Tropical Rainforest', emoji: '🌴',
+    desc: 'Dense tropical evergreen forest, UNESCO World Heritage biodiversity hotspot'
+  },
+  {
+    name: 'Nilgiri Hills, Tamil Nadu',
+    center: [11.410, 76.695],
+    bounds: [[11.36, 76.64], [11.47, 76.76]],
+    type: 'Montane Shola Forest', emoji: '⛰️',
+    desc: 'High-altitude grasslands and shola forests, tea estates'
+  },
+  {
+    name: 'Bandipur Forest, Karnataka',
+    center: [11.668, 76.634],
+    bounds: [[11.62, 76.58], [11.72, 76.69]],
+    type: 'Dry Deciduous Forest', emoji: '🌿',
+    desc: 'Tiger reserve with dry deciduous woodland and scrub'
+  },
+  {
+    name: 'Shivalik Hills, Uttarakhand',
+    center: [29.946, 77.885],
+    bounds: [[29.89, 77.82], [30.01, 77.96]],
+    type: 'Sub-Himalayan Forest', emoji: '🏔️',
+    desc: 'Sub-Himalayan foothills with sal and mixed forest'
+  },
+  {
+    name: 'Satpura Range, Madhya Pradesh',
+    center: [22.613, 78.352],
+    bounds: [[22.55, 78.28], [22.68, 78.43]],
+    type: 'Mixed Deciduous Forest', emoji: '🌲',
+    desc: 'Teak and mixed deciduous central Indian highland'
+  },
+  {
+    name: 'Kaziranga, Assam',
+    center: [26.578, 93.170],
+    bounds: [[26.52, 93.10], [26.64, 93.24]],
+    type: 'Tropical Moist Forest', emoji: '🌿',
+    desc: 'Floodplain forest, UNESCO World Heritage Site, rhino habitat'
+  },
+  {
+    name: 'Pench Tiger Reserve, MP',
+    center: [21.916, 79.296],
+    bounds: [[21.86, 79.24], [21.97, 79.35]],
+    type: 'Dry Deciduous Forest', emoji: '🐯',
+    desc: 'Tiger habitat, mixed teak and bamboo forest'
+  },
+  {
+    name: 'Nagarhole, Karnataka',
+    center: [12.020, 76.130],
+    bounds: [[11.96, 76.07], [12.08, 76.19]],
+    type: 'Moist Deciduous Forest', emoji: '🦒',
+    desc: 'Kabini riverine forest, elephant and leopard corridors'
+  },
+  {
+    name: 'Mudumalai, Tamil Nadu',
+    center: [11.570, 76.540],
+    bounds: [[11.52, 76.48], [11.62, 76.61]],
+    type: 'Dry Tropical Forest', emoji: '🌾',
+    desc: 'Tropical dry forest at tri-state junction'
+  },
+  {
+    name: 'Jim Corbett, Uttarakhand',
+    center: [29.530, 78.780],
+    bounds: [[29.47, 78.72], [29.59, 78.84]],
+    type: 'Himalayan Foothill Forest', emoji: '🏔️',
+    desc: 'Oldest national park in India, Himalayan foothills'
+  },
+  {
+    name: 'Simlipal, Odisha',
+    center: [21.840, 86.420],
+    bounds: [[21.78, 86.36], [21.90, 86.48]],
+    type: 'Tropical Moist Forest', emoji: '🌲',
+    desc: 'Sal forest tiger reserve, dense eastern India woodland'
+  },
+  {
+    name: 'Periyar, Kerala',
+    center: [9.462, 77.214],
+    bounds: [[9.41, 77.16], [9.52, 77.27]],
+    type: 'Tropical Evergreen Forest', emoji: '🏞️',
+    desc: 'Western Ghats lake forest with diverse wildlife'
+  },
+  {
+    name: 'Aravalli Hills, Rajasthan',
+    center: [25.146, 73.709],
+    bounds: [[25.09, 73.64], [25.21, 73.77]],
+    type: 'Tropical Dry Forest', emoji: '🏜️',
+    desc: 'Ancient Aravalli range scrub and thorn woodland'
+  },
+  {
+    name: 'Anamalai Hills, Tamil Nadu',
+    center: [10.350, 77.100],
+    bounds: [[10.29, 77.03], [10.41, 77.17]],
+    type: 'Montane Rainforest', emoji: '⛰️',
+    desc: 'High rainfall montane forests, tea plantations'
+  },
+  {
+    name: 'Gir Forest, Gujarat',
+    center: [21.124, 70.798],
+    bounds: [[21.07, 70.74], [21.19, 70.86]],
+    type: 'Dry Deciduous Forest', emoji: '🦁',
+    desc: 'Last wild habitat of the Asiatic lion'
+  }
+];
+
+// ══════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════
+const STATE = {
+  temp: 30, hum: 40, wind: 15, windDir: 'N',
+  simRunning: false, simInterval: null, simStep: 0,
+  mode: null,           // 'start' | 'goal'
+  fireCells:   [],
+  burnedCells: [],
+  startPos: null,
+  goalPos:  null,
+  spreadProb: 0,
+  currentRegion: null,
+  controlZones: [],
+  routeMode: 'astar',   // 'astar' | 'road'
+};
+
+// ══════════════════════════════════════════════════════════
+//  MAP SETUP
+// ══════════════════════════════════════════════════════════
+const map = L.map('map', { zoomControl: false }).setView([20.59, 78.96], 5);
+L.control.zoom({ position: 'topright' }).addTo(map);
+
+const satLayer = L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  { maxZoom: 19, attribution: 'Esri World Imagery' }
+);
+const streetLayer = L.tileLayer(
+  'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+  { maxZoom: 19, attribution: '© OpenStreetMap' }
+);
+satLayer.addTo(map);
+L.control.layers({'🛰️ Satellite': satLayer, '🗺️ Street Map': streetLayer}, {}, {position:'topright'}).addTo(map);
+
+// Heatmap — vivid fire palette, very visible
+let heatLayer = L.heatLayer([], {
+  radius: 45, blur: 30, maxZoom: 17, max: 1.0,
+  gradient: {
+    0.00: 'rgba(80,0,0,0)',
+    0.20: '#6b0000',
+    0.40: '#aa1400',
+    0.65: '#ee2200',
+    0.82: '#ff5500',
+    0.92: '#ff8800',
+    1.00: '#ffcc00'
+  }
+}).addTo(map);
+
+let burnedLayer  = L.layerGroup().addTo(map);
+let fireLayer    = L.layerGroup().addTo(map);   // NEW: vivid fire cell markers
+let routeLayer   = L.layerGroup().addTo(map);
+let markerLayer  = L.layerGroup().addTo(map);
+let controlLayer = L.layerGroup().addTo(map);
+
+// ══════════════════════════════════════════════════════════
+//  START & GOAL MARKERS
+// ══════════════════════════════════════════════════════════
+function makeIcon(emoji, color) {
+  return L.divIcon({
+    html: `<div style="font-size:28px;filter:drop-shadow(0 2px 6px ${color});">${emoji}</div>`,
+    iconSize: [32,32], iconAnchor: [16,32], className: ''
+  });
+}
+
+STATE.startPos = [20.50, 78.90];
+STATE.goalPos  = [20.62, 79.02];
+
+let startMarker = L.marker(STATE.startPos, { icon: makeIcon('🏃','#00e676'), draggable: true, zIndexOffset: 500 })
+  .addTo(markerLayer)
+  .bindPopup('<div class="fire-popup">🏃 <b>Start Point</b><br>Drag to reposition</div>');
+
+let goalMarker = L.marker(STATE.goalPos, { icon: makeIcon('🏁','#3b8bff'), draggable: true, zIndexOffset: 500 })
+  .addTo(markerLayer)
+  .bindPopup('<div class="fire-popup">🏁 <b>Escape Goal</b><br>Drag to reposition</div>');
+
+startMarker.on('dragend', e => {
+  STATE.startPos = [e.target.getLatLng().lat, e.target.getLatLng().lng];
+  log('Start position updated', 'info');
+});
+goalMarker.on('dragend', e => {
+  STATE.goalPos = [e.target.getLatLng().lat, e.target.getLatLng().lng];
+  log('Goal position updated', 'info');
+});
+
+// ══════════════════════════════════════════════════════════
+//  REGION INITIALIZATION
+// ══════════════════════════════════════════════════════════
+function pickRandomRegion() {
+  return FOREST_REGIONS[Math.floor(Math.random() * FOREST_REGIONS.length)];
+}
+
+function initRegion(region) {
+  STATE.currentRegion = region;
+  const b = region.bounds;
+  const latSpan = b[1][0] - b[0][0];
+  const lonSpan = b[1][1] - b[0][1];
+
+  // Place start at ~22% from bottom-left, goal at ~78% toward top-right
+  STATE.startPos = [
+    parseFloat((b[0][0] + latSpan * 0.22).toFixed(4)),
+    parseFloat((b[0][1] + lonSpan * 0.22).toFixed(4))
+  ];
+  STATE.goalPos = [
+    parseFloat((b[0][0] + latSpan * 0.78).toFixed(4)),
+    parseFloat((b[0][1] + lonSpan * 0.78).toFixed(4))
+  ];
+
+  startMarker.setLatLng(STATE.startPos);
+  goalMarker.setLatLng(STATE.goalPos);
+
+  // Sidebar region badge
+  document.getElementById('region-emoji').textContent    = region.emoji;
+  document.getElementById('region-name-text').textContent = region.name;
+  document.getElementById('region-type-text').textContent = region.type;
+
+  // Region panel
+  document.getElementById('rp-emoji').textContent = region.emoji;
+  document.getElementById('rp-name').textContent  = region.name;
+  document.getElementById('rp-type').textContent  = region.type;
+  document.getElementById('rp-info').textContent  = region.desc;
+
+  // OSM embed iframe (no API key needed — free OpenStreetMap)
+  const [lat1, lon1] = b[0];
+  const [lat2, lon2] = b[1];
+  const osmSrc = `https://www.openstreetmap.org/export/embed.html?bbox=${lon1}%2C${lat1}%2C${lon2}%2C${lat2}&layer=mapnik&marker=${region.center[0]}%2C${region.center[1]}`;
+  document.getElementById('rp-osm').src = osmSrc;
+
+  // Fly map to region
+  map.flyTo(region.center, 13, { duration: 2.0, easeLinearity: 0.25 });
+
+  // Seed fire between start and goal
+  seedFire();
+
+  log(`📍 Region: ${region.name}`, 'info');
+  log(`🌲 Ecosystem: ${region.type}`, 'info');
+  log('🔥 Fire seeded between start and goal', 'fire');
+}
+
+let regionPanelCollapsed = false;
+function toggleRegionPanel() {
+  regionPanelCollapsed = !regionPanelCollapsed;
+  document.getElementById('region-panel').classList.toggle('collapsed', regionPanelCollapsed);
+  document.getElementById('rp-btn').textContent = regionPanelCollapsed ? '▶' : '▼';
+}
+
+// ══════════════════════════════════════════════════════════
+//  FIRE SEEDING — midpoint between start and goal
+// ══════════════════════════════════════════════════════════
+function seedFire() {
+  const midLat = (STATE.startPos[0] + STATE.goalPos[0]) / 2;
+  const midLon = (STATE.startPos[1] + STATE.goalPos[1]) / 2;
+
+  STATE.fireCells = [];
+  for (let i = 0; i < 12; i++) {
+    const lat = midLat + (Math.random() - 0.5) * 0.007;
+    const lon = midLon + (Math.random() - 0.5) * 0.007;
+    STATE.fireCells.push([parseFloat(lat.toFixed(4)), parseFloat(lon.toFixed(4))]);
+  }
+  STATE.burnedCells = [];
+  STATE.simStep = 0;
+  updateMapLayers();
+  updateStats();
+}
+
+// ══════════════════════════════════════════════════════════
+//  MAP RENDERING — fire spread visible with vivid circles
+// ══════════════════════════════════════════════════════════
+function updateMapLayers() {
+  // ── Heatmap: bright gradient showing fire spread intensity ──
+  const heatData   = STATE.fireCells.map(c => [c[0], c[1], 1.0]);
+  const burnedHeat = STATE.burnedCells.slice(-80).map(c => [c[0], c[1], 0.35]);
+  heatLayer.setLatLngs([...heatData, ...burnedHeat]);
+
+  // ── Burned area circles ──
+  burnedLayer.clearLayers();
+  STATE.burnedCells.slice(-120).forEach(c => {
+    L.circle([c[0], c[1]], {
+      radius: 100, color: 'rgba(0,0,0,0)',
+      fillColor: '#200000', fillOpacity: 0.75,
+      weight: 0, interactive: false
+    }).addTo(burnedLayer);
+  });
+
+  // ── Active fire cells: vivid animated circles + glow ──
+  fireLayer.clearLayers();
+  STATE.fireCells.forEach(c => {
+    // Outer glow ring
+    L.circle([c[0], c[1]], {
+      radius: 90,
+      color: 'rgba(255,80,0,0.0)',
+      fillColor: '#ff2200',
+      fillOpacity: 0.18,
+      weight: 0,
+      interactive: false
+    }).addTo(fireLayer);
+
+    // Inner bright fire circle
+    L.circle([c[0], c[1]], {
+      radius: 45,
+      color: '#ff5500',
+      fillColor: '#ff2200',
+      fillOpacity: 0.82,
+      weight: 2,
+      interactive: false
+    }).addTo(fireLayer);
+  });
+
+  // ── Wind direction arrow overlay ──
+  drawWindArrow();
+}
+
+// ══════════════════════════════════════════════════════════
+//  WIND DIRECTION ARROW ON MAP
+// ══════════════════════════════════════════════════════════
+let windArrowMarker = null;
+const WIND_DIR_ANGLE = { N:0, NE:45, E:90, SE:135, S:180, SW:225, W:270, NW:315 };
+
+function drawWindArrow() {
+  if (!STATE.currentRegion) return;
+  const center = STATE.currentRegion.center;
+  const angle = WIND_DIR_ANGLE[STATE.windDir] || 0;
+  const svg = `
+    <svg width="54" height="54" viewBox="0 0 54 54" xmlns="http://www.w3.org/2000/svg"
+         style="transform:rotate(${angle}deg);filter:drop-shadow(0 0 6px rgba(255,140,0,0.8));">
+      <polygon points="27,4 35,46 27,38 19,46" fill="#ff8800" opacity="0.92"/>
+      <circle cx="27" cy="27" r="5" fill="#ffcc00"/>
+    </svg>`;
+  if (windArrowMarker) windArrowMarker.remove();
+  windArrowMarker = L.marker(center, {
+    icon: L.divIcon({
+      html: `<div style="position:relative;left:-27px;top:-27px;">${svg}</div>`,
+      iconSize: [0,0], className: ''
+    }),
+    interactive: false, zIndexOffset: 200
+  }).addTo(map);
+}
+
+// ══════════════════════════════════════════════════════════
+//  SIMULATION STEP (backend)
+// ══════════════════════════════════════════════════════════
+let _deadSteps = 0;  // count consecutive steps with no spread
+
+async function simulateStep() {
+  // If fire burned out, reseed near burned centroid instead of stopping
+  if (STATE.fireCells.length === 0) {
+    _deadSteps++;
+    if (_deadSteps >= 2) {
+      // Reseed from the centroid of burned area
+      if (STATE.burnedCells.length > 0) {
+        const bLat = STATE.burnedCells.reduce((s,c)=>s+c[0],0)/STATE.burnedCells.length;
+        const bLon = STATE.burnedCells.reduce((s,c)=>s+c[1],0)/STATE.burnedCells.length;
+        for (let i = 0; i < 6; i++) {
+          STATE.fireCells.push([
+            parseFloat((bLat + (Math.random()-0.5)*0.006).toFixed(4)),
+            parseFloat((bLon + (Math.random()-0.5)*0.006).toFixed(4))
+          ]);
+        }
+        log('🔥 Fire re-ignited near burned area', 'fire');
+        _deadSteps = 0;
+      } else {
+        stopSimulation();
+        log('Fire exhausted all fuel — simulation ended', 'info');
+        return;
+      }
+    }
+    updateMapLayers(); updateStats();
+    return;
+  }
+  _deadSteps = 0;
+
+  try {
+    const res = await fetch('/simulate_step', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        fire_cells: STATE.fireCells,
+        temp:       STATE.temp,
+        hum:        STATE.hum,
+        wind:       STATE.wind,
+        wind_dir:   STATE.windDir,
+        step_size:  0.0015
+      })
+    });
+    const data = await res.json();
+    if (data.error) { log('Simulation error: ' + data.error, 'fire'); return; }
+
+    // Add current fire to burned
+    STATE.burnedCells.push(...STATE.fireCells.filter(c =>
+      !STATE.burnedCells.some(b =>
+        Math.abs(b[0]-c[0]) < 0.0001 && Math.abs(b[1]-c[1]) < 0.0001
+      )
+    ));
+
+    // Merge existing active + new cells, cap at 200
+    const existingActive = STATE.fireCells.filter(c =>
+      !STATE.burnedCells.some(b =>
+        Math.abs(b[0]-c[0]) < 0.0002 && Math.abs(b[1]-c[1]) < 0.0002
+      )
+    );
+    STATE.fireCells = [...existingActive, ...data.new_cells.map(nc => [nc[0], nc[1]])].slice(-200);
+    STATE.spreadProb = data.probability || 0;
+    STATE.simStep++;
+
+    updateMapLayers();
+    updateStats();
+
+    if (STATE.simStep % 5 === 0) {
+      log(`Step ${STATE.simStep}: ${STATE.fireCells.length} active cells, risk ${(STATE.spreadProb*100).toFixed(0)}%`, 'fire');
+    }
+
+    // Proximity warnings
+    for (const fc of STATE.fireCells) {
+      if (haversine(fc, STATE.startPos) < 0.4) {
+        showToast('⚠️ Fire approaching start position!', 'warn');
+        setStatusDanger();
+        break;
+      }
+      if (haversine(fc, STATE.goalPos) < 0.4) {
+        showToast('🚨 Fire approaching escape goal!', 'warn');
+        setStatusDanger();
+        break;
+      }
+    }
+  } catch(e) { log('Network error: ' + e.message, 'fire'); }
+}
+
+// ══════════════════════════════════════════════════════════
+//  SIMULATION CONTROLS
+// ══════════════════════════════════════════════════════════
+function toggleSimulation() {
+  STATE.simRunning ? stopSimulation() : startSimulation();
+}
+function startSimulation() {
+  if (STATE.simStep === 0) seedFire(); // ensure fire is between start and goal
+  _deadSteps = 0;
+  STATE.simRunning = true;
+  STATE.simInterval = setInterval(simulateStep, 2000);  // 2s interval - keeps spreading
+  document.getElementById('btn-sim').classList.add('running');
+  document.getElementById('sim-icon').textContent = '⏸';
+  document.getElementById('sim-label').textContent = 'Pause Simulation';
+  document.getElementById('status-dot').classList.add('danger');
+  document.getElementById('status-text').textContent = 'Fire spreading...';
+  log('Simulation started — fire between start & goal', 'fire');
+  showToast('🔥 Fire simulation started', 'warn');
+}
+function stopSimulation() {
+  STATE.simRunning = false;
+  clearInterval(STATE.simInterval);
+  document.getElementById('btn-sim').classList.remove('running');
+  document.getElementById('sim-icon').textContent = '▶';
+  document.getElementById('sim-label').textContent = 'Start Simulation';
+  document.getElementById('status-dot').classList.remove('danger');
+  document.getElementById('status-text').textContent = 'Simulation paused';
+  log('Simulation paused', 'info');
+}
+function resetFire() {
+  stopSimulation();
+  controlLayer.clearLayers();
+  fireLayer.clearLayers();
+  STATE.controlZones = [];
+  document.getElementById('fire-control-panel').classList.remove('show');
+  routeLayer.clearLayers();
+  document.getElementById('route-info').classList.remove('show');
+  seedFire();
+  updateStats();
+  log('Fire reset — re-seeded between start and goal', 'info');
+  showToast('🔄 Fire reset', 'info');
+}
+function setStatusDanger() {
+  document.getElementById('status-dot').classList.add('danger');
+  document.getElementById('status-text').textContent = '🚨 Emergency — Fire approaching!';
+}
+
+// ══════════════════════════════════════════════════════════
+//  ROUTE MODE TOGGLE
+// ══════════════════════════════════════════════════════════
+function setRouteMode(mode) {
+  STATE.routeMode = mode;
+  document.getElementById('rmode-astar').classList.toggle('active', mode === 'astar');
+  document.getElementById('rmode-road').classList.toggle('active', mode === 'road');
+  const note = document.getElementById('route-mode-note');
+  if (mode === 'astar') {
+    note.textContent = '🤖 AI Route: direct A* path — avoids all fire zones with 1.1 km clearance';
+    note.style.color = 'var(--accent-blue)';
+  } else {
+    note.textContent = '🛣️ Road Route: follows real roads (OSRM) + A* fire avoidance at each segment';
+    note.style.color = 'var(--accent-green)';
+  }
+}
+
+// ══════════════════════════════════════════════════════════
+//  ESCAPE ROUTING — AI A* OR REAL ROADS (OSRM)
+// ══════════════════════════════════════════════════════════
+async function findPath() {
+  if (!STATE.startPos || !STATE.goalPos) {
+    showToast('Set start and goal first', 'warn'); return;
+  }
+
+  if (STATE.routeMode === 'road') {
+    await findRoadPath();
+  } else {
+    await findAstarPath();
+  }
+}
+
+// ── A* path (avoids fire, uses backend) ──────────────────
+async function runAstar(start, goal) {
+  const res = await fetch('/astar', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      start:        start,
+      goal:         goal,
+      fire_cells:   STATE.fireCells,
+      burned_cells: STATE.burnedCells,
+      step:         0.001
+    })
+  });
+  return await res.json();
+}
+
+async function findAstarPath() {
+  showToast('🗺️ Computing safest AI route...', 'info');
+  log('A* pathfinding — hard 1.1 km exclusion zone around all fire', 'path');
+  routeLayer.clearLayers();
+
+  try {
+    const data = await runAstar(STATE.startPos, STATE.goalPos);
+
+    if (!data.found || data.path.length === 0) {
+      showToast('❌ No safe path — fire may be completely surrounding the area!', 'warn');
+      log('A*: No safe path — try Fire Control Analysis & run again', 'path');
+      return;
+    }
+
+    drawFireExclusionZones();           // show the 1.1 km red buffer visually
+    drawRoute(data.path, '#3b8bff', '🤖 AI Safe Route (fire-clear zone shown in red)');
+    const dist = pathDistanceKm(data.path);
+    document.getElementById('route-dist').textContent  = dist.toFixed(2);
+    document.getElementById('route-eta').textContent   = Math.ceil(dist / 0.083);
+    document.getElementById('route-nodes').textContent = data.nodes_explored || '—';
+    document.getElementById('route-info').classList.add('show');
+
+    log(`AI Route: ${dist.toFixed(2)} km — route stays >1 km clear of every fire cell`, 'path');
+    showToast(`✅ Safe AI route: ${dist.toFixed(2)} km (1 km fire clearance)`, 'good');
+
+  } catch(e) {
+    log('A* error: ' + e.message, 'path');
+    showToast('Routing failed', 'warn');
+  }
+}
+
+// ── Real road path: OSRM shape + A* fire avoidance between waypoints ──
+async function findRoadPath() {
+  showToast('🛣️ Fetching road shape + computing fire-safe route...', 'info');
+  log('Road Route: OSRM shape → A* fire avoidance between waypoints', 'path');
+  routeLayer.clearLayers();
+
+  const [sLat, sLon] = STATE.startPos;
+  const [gLat, gLon] = STATE.goalPos;
+
+  // Step 1: Get road geometry from OSRM
+  const url = `https://router.project-osrm.org/route/v1/foot/${sLon},${sLat};${gLon},${gLat}?overview=full&geometries=geojson&steps=false`;
+
+  let roadWaypoints = null;
+  try {
+    const res = await fetch(url);
+    const data = await res.json();
+    if (data.routes && data.routes.length > 0) {
+      // Sample road path to get intermediate waypoints (every ~10th point, max 4 waypoints between start/goal)
+      const pts = data.routes[0].geometry.coordinates.map(c => [c[1], c[0]]);
+      const step = Math.max(1, Math.floor(pts.length / 5));
+      roadWaypoints = [];
+      for (let i = step; i < pts.length - 1; i += step) {
+        if (roadWaypoints.length < 4) roadWaypoints.push(pts[i]);
+      }
+      log(`Road shape loaded: ${pts.length} pts, sampling ${roadWaypoints.length} waypoints`, 'path');
+    }
+  } catch(e) {
+    log('OSRM unavailable — using direct A* only', 'path');
+  }
+
+  // Step 2: Chain A* between start → waypoint1 → waypoint2 → ... → goal
+  // Each A* segment avoids fire. If waypoint is inside fire zone, skip it.
+  const waypoints = [STATE.startPos, ...(roadWaypoints || []), STATE.goalPos];
+  let fullPath = [];
+  let totalDist = 0;
+  let failed = false;
+
+  showToast('⏳ Routing through waypoints (fire-safe)...', 'info');
+
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    const segStart = waypoints[i];
+    const segGoal  = waypoints[i+1];
+
+    // Skip waypoints that are inside fire zone
+    const inFire = STATE.fireCells.some(fc =>
+      Math.sqrt((segGoal[0]-fc[0])**2 + (segGoal[1]-fc[1])**2) < 0.01
+    );
+    if (inFire && i < waypoints.length - 2) {
+      log(`Waypoint ${i+1} inside fire zone — skipping`, 'path');
+      continue;
+    }
+
+    try {
+      const data = await runAstar(segStart, segGoal);
+      if (data.found && data.path.length > 1) {
+        // Avoid duplicating junction points
+        const seg = i === 0 ? data.path : data.path.slice(1);
+        fullPath.push(...seg);
+        totalDist += pathDistanceKm(data.path);
+      } else {
+        log(`Segment ${i+1}→${i+2} blocked by fire — trying direct jump`, 'path');
+        // Try direct A* from current end to final goal as recovery
+        if (i < waypoints.length - 2) continue;
+        failed = true;
+      }
+    } catch(e) {
+      log(`Segment error: ${e.message}`, 'path');
+      failed = true;
+    }
+  }
+
+  if (fullPath.length < 2) {
+    showToast('❌ Could not find fire-safe road route — try AI Route', 'warn');
+    log('Road+A*: No complete safe road path found', 'path');
+    return;
+  }
+
+  drawFireExclusionZones();
+  drawRoute(fullPath, '#00e676', '🛣️ Road Route (Fire-Safe A*)');
+  document.getElementById('route-dist').textContent  = totalDist.toFixed(2);
+  document.getElementById('route-eta').textContent   = Math.ceil(totalDist / 0.083);
+  document.getElementById('route-nodes').textContent = roadWaypoints ? `${roadWaypoints.length} road WPs` : 'Direct';
+  document.getElementById('route-info').classList.add('show');
+
+  const modeNote = failed ? ' (partial — some segments blocked)' : '';
+  log(`Road+A* Route: ${totalDist.toFixed(2)} km, fire-safe${modeNote}`, 'path');
+  showToast(`✅ Road route: ${totalDist.toFixed(2)} km (fire-safe)`, 'good');
+}
+
+// ── Draw fire exclusion zones visually on the map ──
+function drawFireExclusionZones() {
+  // 1.1 km safety buffer ring — matches A* BUFFER=10 cells at 0.001 deg
+  const EXCLUSION_M = 1100;   // meters ≈ 0.01 deg
+  STATE.fireCells.forEach(fc => {
+    L.circle([fc[0], fc[1]], {
+      radius: EXCLUSION_M,
+      color: '#ff2200', weight: 1.5,
+      fillColor: '#ff0000', fillOpacity: 0.07,
+      dashArray: '6 5', interactive: false
+    }).addTo(routeLayer);
+  });
+  STATE.burnedCells.slice(-80).forEach(bc => {
+    L.circle([bc[0], bc[1]], {
+      radius: 550,
+      color: '#cc4400', weight: 1,
+      fillColor: '#800000', fillOpacity: 0.05,
+      dashArray: '4 6', interactive: false
+    }).addTo(routeLayer);
+  });
+}
+
+// ── Check if path crosses fire zone ──
+function pathCrossesFireZone(path) {
+  const DANGER_DIST = 0.003; // ~300m in degrees
+  for (const pt of path) {
+    for (const fc of STATE.fireCells) {
+      const dlat = pt[0] - fc[0];
+      const dlon = pt[1] - fc[1];
+      if (Math.sqrt(dlat*dlat + dlon*dlon) < DANGER_DIST) return true;
+    }
+    for (const bc of STATE.burnedCells) {
+      const dlat = pt[0] - bc[0];
+      const dlon = pt[1] - bc[1];
+      if (Math.sqrt(dlat*dlat + dlon*dlon) < DANGER_DIST) return true;
+    }
+  }
+  return false;
+}
+
+// ── Filter path if any segment is inside fire (A* fallback) ──
+function filterPathThroughFire(path) {
+  // If path is already safe (came from A*), return as-is
+  // But do a final pass to ensure no point is in fire zone
+  const BLOCK_DIST = 0.002;
+  return path.filter(pt => {
+    for (const fc of STATE.fireCells) {
+      const d = Math.sqrt((pt[0]-fc[0])**2 + (pt[1]-fc[1])**2);
+      if (d < BLOCK_DIST) return false;
+    }
+    return true;
+  });
+}
+
+// ── Calculate path distance in km ──
+function pathDistanceKm(path) {
+  let d = 0;
+  for (let i = 1; i < path.length; i++) {
+    d += haversine(path[i-1], path[i]);
+  }
+  return d;
+}
+
+function drawRoute(path, color = '#3b8bff', label = 'Escape Route') {
+  if (!path || path.length < 2) return;
+
+  // Draw fire zone warning overlay first (behind route)
+  if (STATE.fireCells.length > 0) {
+    STATE.fireCells.forEach(fc => {
+      L.circle([fc[0], fc[1]], {
+        radius: 120, color: '#ff2200', weight: 1,
+        fillColor: '#ff0000', fillOpacity: 0.05,
+        interactive: false
+      }).addTo(routeLayer);
+    });
+  }
+
+  // Solid route line
+  L.polyline(path, {
+    color: color, weight: 6, opacity: 0.95,
+    lineCap: 'round', lineJoin: 'round'
+  }).addTo(routeLayer);
+
+  // Animated dashed overlay
+  L.polyline(path, {
+    color: '#ffffff', weight: 2.5, opacity: 0.55,
+    dashArray: '10 10', lineCap: 'round'
+  }).addTo(routeLayer);
+
+  // Direction arrows every ~8 points
+  for (let i = 5; i < path.length; i += 8) {
+    const prev = path[i-1], curr = path[i];
+    const angle = Math.atan2(curr[1]-prev[1], curr[0]-prev[0]) * 180 / Math.PI;
+    L.marker([curr[0], curr[1]], {
+      icon: L.divIcon({
+        html: `<div style="transform:rotate(${angle}deg);color:${color};font-size:14px;opacity:0.9;">➤</div>`,
+        iconSize:[16,16], iconAnchor:[8,8], className:''
+      }),
+      interactive: false
+    }).addTo(routeLayer);
+  }
+
+  L.circleMarker(path[0], {radius:9, color:'#00e676', fillColor:'#00e676', fillOpacity:1, weight:2})
+   .addTo(routeLayer).bindPopup('<div class="fire-popup">🏃 <b>Start of Escape Route</b></div>');
+  L.circleMarker(path[path.length-1], {radius:9, color:color, fillColor:color, fillOpacity:1, weight:2})
+   .addTo(routeLayer).bindPopup('<div class="fire-popup">🏁 <b>Safe Destination</b></div>');
+
+  // Route label
+  const midIdx = Math.floor(path.length / 2);
+  L.marker(path[midIdx], {
+    icon: L.divIcon({
+      html: `<div style="background:rgba(10,15,30,0.85);border:1px solid ${color};border-radius:6px;padding:3px 8px;font-size:10px;font-weight:700;color:${color};white-space:nowrap;">${label}</div>`,
+      iconSize: null, iconAnchor: [0,0], className: ''
+    }),
+    interactive: false
+  }).addTo(routeLayer);
+
+  map.fitBounds(L.polyline(path).getBounds().pad(0.15));
+}
+
+// ══════════════════════════════════════════════════════════
+//  FIRE CONTROL ANALYSIS (replaces water/sand suppression)
+// ══════════════════════════════════════════════════════════
+let zonePulseInterval = null;
+const zoneCirclesRef = [];
+
+async function runFireControlAnalysis() {
+  if (STATE.fireCells.length === 0) {
+    showToast('Start simulation first', 'warn'); return;
+  }
+
+  const panel    = document.getElementById('fire-control-panel');
+  const textEl   = document.getElementById('fire-control-text');
+  const summaryEl = document.getElementById('ctrl-summary-text');
+
+  panel.classList.add('show');
+  summaryEl.textContent = 'Analysing...';
+  textEl.innerHTML = '<div class="analyzing-spinner"><div class="mini-spinner"></div> Analysing fire patterns...</div>';
+
+  // Clear old zones
+  controlLayer.clearLayers();
+  STATE.controlZones = [];
+  zoneCirclesRef.length = 0;
+  if (zonePulseInterval) { clearInterval(zonePulseInterval); zonePulseInterval = null; }
+
+  document.getElementById('btn-fire-ctrl').disabled = true;
+  log('Running Fire Control Analysis...', 'ctrl');
+  showToast('🚒 Analysing control zones...', 'ctrl');
+
+  try {
+    const res = await fetch('/fire_control_analysis', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        fire_cells:   STATE.fireCells,
+        burned_cells: STATE.burnedCells,
+        wind_dir:     STATE.windDir,
+        wind:         STATE.wind,
+        hum:          STATE.hum,
+        start_pos:    STATE.startPos,
+        goal_pos:     STATE.goalPos,
+        region_name:  STATE.currentRegion ? STATE.currentRegion.name : 'Forest Region'
+      })
+    });
+    const data = await res.json();
+
+    STATE.controlZones = data.zones || [];
+
+    const priorityStyle = {
+      CRITICAL: { fill:'#8b0000', border:'#ff2200', labelClass:'critical' },
+      HIGH:     { fill:'#8b3d00', border:'#ff6600', labelClass:'high' },
+      MODERATE: { fill:'#7a6200', border:'#ffcc00', labelClass:'moderate' }
+    };
+
+    STATE.controlZones.forEach((zone, i) => {
+      const ps = priorityStyle[zone.priority] || priorityStyle.MODERATE;
+
+      // Outer glow halo
+      L.circle([zone.lat, zone.lon], {
+        radius: zone.radius * 2.8,
+        color: ps.border, fillColor: ps.fill,
+        fillOpacity: 0.07, weight: 1,
+        dashArray: '5 6', interactive: false
+      }).addTo(controlLayer);
+
+      // Main pulsing zone circle
+      const circle = L.circle([zone.lat, zone.lon], {
+        radius: zone.radius,
+        color: ps.border, fillColor: ps.fill,
+        fillOpacity: 0.3, weight: 2.5
+      }).addTo(controlLayer);
+      zoneCirclesRef.push(circle);
+
+      circle.bindPopup(`
+        <div class="fire-popup">
+          <b style="color:${ps.border};">⚡ ${zone.label}</b>
+          <span style="display:block;color:#ff8844;font-size:10px;font-weight:700;margin:2px 0;">${zone.priority} PRIORITY</span>
+          <span style="font-size:11px;color:#ccc;">${zone.reason}</span>
+        </div>
+      `);
+
+      // Zone label badge
+      L.marker([zone.lat + 0.0014, zone.lon], {
+        icon: L.divIcon({
+          html: `<div class="zone-label ${ps.labelClass}">${i+1}. ${zone.label}</div>`,
+          iconSize: null, iconAnchor: [0, 0], className: ''
+        }),
+        interactive: false
+      }).addTo(controlLayer);
+    });
+
+    // Start pulsing animation
+    startZonePulse();
+
+    // Display analysis text
+    summaryEl.textContent = data.summary || `${STATE.controlZones.length} control zones identified`;
+    typewriterEffect(textEl, data.analysis || 'Analysis complete.', 14);
+
+    log(`Control analysis: ${STATE.controlZones.length} strategic zones mapped`, 'ctrl');
+    showToast(`🎯 ${STATE.controlZones.length} control zones identified`, 'ctrl');
+
+  } catch(e) {
+    textEl.textContent = 'Analysis error: ' + e.message;
+    log('Fire control error: ' + e.message, 'fire');
+  } finally {
+    document.getElementById('btn-fire-ctrl').disabled = false;
+  }
+}
+
+function startZonePulse() {
+  let tick = 0;
+  zonePulseInterval = setInterval(() => {
+    tick++;
+    zoneCirclesRef.forEach((circle, i) => {
+      const opacity = 0.18 + 0.22 * Math.abs(Math.sin(tick * 0.28 + i * 1.1));
+      circle.setStyle({ fillOpacity: opacity });
+    });
+  }, 200);
+}
+
+function typewriterEffect(el, text, delayMs = 14) {
+  el.textContent = '';
+  let i = 0;
+  const iv = setInterval(() => {
+    if (i < text.length) {
+      el.textContent += text[i++];
+      el.parentElement.scrollTop = el.parentElement.scrollHeight;
+    } else {
+      clearInterval(iv);
+    }
+  }, delayMs);
+}
+
+// ══════════════════════════════════════════════════════════
+//  INTERACTION MODE (start / goal placement)
+// ══════════════════════════════════════════════════════════
+function setMode(mode) {
+  if (STATE.mode === mode) {
+    STATE.mode = null; hideModeIndicator(); clearActiveBtns(); return;
+  }
+  STATE.mode = mode;
+  showModeIndicator(mode);
+  clearActiveBtns();
+  const map = { start: 'btn-set-start', goal: 'btn-set-goal' };
+  if (map[mode]) document.getElementById(map[mode]).classList.add('active-mode');
+}
+function clearActiveBtns() {
+  ['btn-set-start','btn-set-goal'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('active-mode');
+  });
+}
+function showModeIndicator(mode) {
+  const el = document.getElementById('mode-indicator');
+  const cfg = {
+    start: ['mode-start','🏃 Click map to set start point'],
+    goal:  ['mode-goal',  '🏁 Click map to set goal point']
+  };
+  if (!cfg[mode]) return;
+  el.className = `mode-indicator show ${cfg[mode][0]}`;
+  el.innerHTML = cfg[mode][1];
+}
+function hideModeIndicator() {
+  document.getElementById('mode-indicator').classList.remove('show');
+}
+
+map.on('click', function(e) {
+  const lat = parseFloat(e.latlng.lat.toFixed(4));
+  const lon = parseFloat(e.latlng.lng.toFixed(4));
+
+  if (STATE.mode === 'start') {
+    STATE.startPos = [lat, lon];
+    startMarker.setLatLng([lat, lon]);
+    log(`Start set: [${lat.toFixed(3)}, ${lon.toFixed(3)}]`, 'info');
+    showToast('🏃 Start position updated', 'good');
+    STATE.mode = null; hideModeIndicator(); clearActiveBtns();
+
+  } else if (STATE.mode === 'goal') {
+    STATE.goalPos = [lat, lon];
+    goalMarker.setLatLng([lat, lon]);
+    log(`Goal set: [${lat.toFixed(3)}, ${lon.toFixed(3)}]`, 'info');
+    showToast('🏁 Goal position updated', 'good');
+    STATE.mode = null; hideModeIndicator(); clearActiveBtns();
+  }
+});
+
+// ══════════════════════════════════════════════════════════
+//  STATS UPDATE
+// ══════════════════════════════════════════════════════════
+function updateStats() {
+  document.getElementById('stat-cells').textContent = STATE.fireCells.length;
+  document.getElementById('stat-prob').innerHTML =
+    Math.round(STATE.spreadProb * 100) + '<span class="stat-unit">%</span>';
+  const area = (STATE.burnedCells.length * 0.03).toFixed(1);
+  document.getElementById('stat-area').innerHTML =
+    area + '<span class="stat-unit">ha</span>';
+  document.getElementById('stat-steps').textContent = STATE.simStep;
+  document.getElementById('spread-bar').style.width = (STATE.spreadProb * 100) + '%';
+  document.getElementById('spread-bar-label').textContent =
+    `Fire spread probability: ${Math.round(STATE.spreadProb * 100)}%`;
+}
+
+// ══════════════════════════════════════════════════════════
+//  WEATHER SLIDERS
+// ══════════════════════════════════════════════════════════
+document.getElementById('temp-range').addEventListener('input', function() {
+  STATE.temp = parseInt(this.value);
+  document.getElementById('temp-val').textContent = STATE.temp + '°C';
+  this.style.background = `linear-gradient(to right,var(--accent-fire) ${(STATE.temp-15)/40*100}%,var(--border) 0%)`;
+});
+document.getElementById('hum-range').addEventListener('input', function() {
+  STATE.hum = parseInt(this.value);
+  document.getElementById('hum-val').textContent = STATE.hum + '%';
+  this.style.background = `linear-gradient(to right,var(--accent-cyan) ${(STATE.hum-5)/90*100}%,var(--border) 0%)`;
+});
+document.getElementById('wind-range').addEventListener('input', function() {
+  STATE.wind = parseInt(this.value);
+  document.getElementById('wind-val').textContent = STATE.wind + ' km/h';
+  this.style.background = `linear-gradient(to right,var(--accent-blue) ${STATE.wind/80*100}%,var(--border) 0%)`;
+  if (STATE.currentRegion) drawWindArrow();
+});
+// Init track fills
+document.getElementById('temp-range').style.background  = `linear-gradient(to right,var(--accent-fire) ${(30-15)/40*100}%,var(--border) 0%)`;
+document.getElementById('hum-range').style.background   = `linear-gradient(to right,var(--accent-cyan) ${(40-5)/90*100}%,var(--border) 0%)`;
+document.getElementById('wind-range').style.background  = `linear-gradient(to right,var(--accent-blue) ${15/80*100}%,var(--border) 0%)`;
+
+// ══════════════════════════════════════════════════════════
+//  COMPASS ROSE
+// ══════════════════════════════════════════════════════════
+document.querySelectorAll('.compass-dir').forEach(btn => {
+  btn.addEventListener('click', function() {
+    document.querySelectorAll('.compass-dir').forEach(b => b.classList.remove('active'));
+    this.classList.add('active');
+    STATE.windDir = this.dataset.dir;
+    document.getElementById('wind-dir-label').textContent = STATE.windDir;
+    if (STATE.currentRegion) drawWindArrow();
+    log(`Wind direction → ${STATE.windDir}`, 'info');
+  });
+});
+
+// ══════════════════════════════════════════════════════════
+//  UTILS
+// ══════════════════════════════════════════════════════════
+function haversine(a, b) {
+  const R = 6371;
+  const dlat = (b[0]-a[0]) * Math.PI/180;
+  const dlon = (b[1]-a[1]) * Math.PI/180;
+  const x = Math.sin(dlat/2)**2 +
+             Math.cos(a[0]*Math.PI/180) * Math.cos(b[0]*Math.PI/180) * Math.sin(dlon/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
+}
+
+function log(msg, type='info') {
+  const el  = document.getElementById('ai-log');
+  const div = document.createElement('div');
+  div.className = `log-entry ${type}`;
+  const t = new Date().toLocaleTimeString('en', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  div.textContent = `[${t}] ${msg}`;
+  el.insertBefore(div, el.firstChild);
+  while (el.children.length > 30) el.removeChild(el.lastChild);
+}
+
+let toastTimer;
+function showToast(msg, type='info') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = `show ${type}`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = type; }, 3400);
+}
+
+// ══════════════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════════════
+window.addEventListener('load', () => {
+  const steps = [
+    'Loading forest region database...',
+    'Calibrating fire simulation models...',
+    'Selecting random forest region...',
+    'Positioning start & goal markers...',
+    'ForestGuard AI ready!'
+  ];
+  let si = 0;
+  const loadIv = setInterval(() => {
+    document.getElementById('loading-text').textContent = steps[Math.min(si++, steps.length-1)];
+  }, 280);
+
+  setTimeout(() => {
+    clearInterval(loadIv);
+    document.getElementById('loading').classList.add('hide');
+    setTimeout(() => document.getElementById('loading')?.remove(), 700);
+  }, 1500);
+
+  // Pick and launch a random forest region
+  const region = pickRandomRegion();
+  initRegion(region);
+
+  updateMapLayers();
+  showToast(`🌲 ${region.name} — Start Simulation!`, 'good');
+});
+</script>
+</body>
+</html>

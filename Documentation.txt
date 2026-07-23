@@ -1,0 +1,23 @@
+our Final 4 Objectives
+1.Safe Escape Route Planning
+→ Find the safest path for a trapped person to escape the wildfire zone in real-time
+2. Wildfire Spread Simulation
+→ Model how fire spreads based on wind direction, speed, and nearby fuel (trees)
+3. Efficient Fire Containment Strategy
+→ Use AI to decide where to place resources (water/firebreaks) to stop spread quickly
+4. Real-time Decision Support System (your 4th objective)
+→ Continuously update predictions and decisions as the fire spreads dynamically
+
+
+Networks Part
+Use SDN + QoS concepts to prioritize emergency data (fire status, escape routes) as if it’s sent over a managed network.
+Model your grid as a wireless sensor network, where nodes share fire data (like real-time distributed systems).
+Simulate data flow + decision updates (like TCP/IP or IoT communication) alongside your AI, showing how networks support real-time disaster response.
+
+AI Part
+Fire Spread Prediction
+→ Model wildfire behavior dynamically based on rules (wind, nearby fuel)
+Escape Path Planning
+→ Use pathfinding (A* / BFS) to find the safest route for a trapped person
+Optimal Decision Making (Minimax)
+→ Treat fire as an opponent and choose the best containment strategy under worst-case scenarios
