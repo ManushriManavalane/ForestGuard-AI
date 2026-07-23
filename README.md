@@ -113,6 +113,7 @@ python app.py
    * Click ** Find Escape Route**. The backend A* algorithm will calculate a safe path bypassing the fire and its safety buffer zone.
 7. **Perform Tactical Analysis**: Click ** Fire Control Analysis** to see where the AI recommends establishing firebreaks and dropping retardants.
 
+
 ---
 
 ## Optional: Retraining the Machine Learning Models
@@ -126,3 +127,26 @@ This script will:
 2. Apply feature engineering (date mapping, binary labeling for area spread).
 3. Train Gradient Boosting (primary) and Random Forest (secondary) classifiers.
 4. Export updated `.pkl` files and `feature_names.json` to the `models/` directory.
+
+How to download and run it again in the future:
+Download/Clone the repository: Open a terminal and run:
+
+bash
+git clone https://github.com/ManushriManavalane/ForestGuard-AI.git
+cd ForestGuard-AI
+Recreate the virtual environment (since the packages were not uploaded to GitHub):
+
+bash
+python -m venv venv
+Install the required packages:
+
+Activate the virtual environment:
+PowerShell: .\venv\Scripts\Activate.ps1
+Command Prompt: .\venv\Scripts\activate.bat
+Install the libraries:
+bash
+pip install flask scikit-learn pandas numpy joblib
+Run the app:
+
+bash
+python app.py
