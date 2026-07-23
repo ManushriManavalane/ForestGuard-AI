@@ -108,14 +108,14 @@ python app.py
    * **Wind Speed & Direction**: Wind pushes the fire front along a directional vector.
 5. **Run Simulation**: Click **Start Simulation**. Watch the cellular automaton propagate in real-time.
 6. **Plan Evacuation**:
-   * Click **🏃 Set Start** and place a marker on the map where a person is trapped.
-   * Click **🏁 Set Goal** and place a marker in a safe location.
-   * Click **🗺️ Find Escape Route**. The backend A* algorithm will calculate a safe path bypassing the fire and its safety buffer zone.
-7. **Perform Tactical Analysis**: Click **🚒 Fire Control Analysis** to see where the AI recommends establishing firebreaks and dropping retardants.
+   * Click ** Set Start** and place a marker on the map where a person is trapped.
+   * Click ** Set Goal** and place a marker in a safe location.
+   * Click ** Find Escape Route**. The backend A* algorithm will calculate a safe path bypassing the fire and its safety buffer zone.
+7. **Perform Tactical Analysis**: Click ** Fire Control Analysis** to see where the AI recommends establishing firebreaks and dropping retardants.
 
 ---
 
-## 🧠 Optional: Retraining the Machine Learning Models
+## Optional: Retraining the Machine Learning Models
 
 The models are pre-trained and saved in `models/`. However, if you wish to retrain them on the UCI dataset:
 ```bash
